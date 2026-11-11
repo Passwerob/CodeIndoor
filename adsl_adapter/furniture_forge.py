@@ -17,7 +17,10 @@ geometry.
 
 Flow per object:
     brief + envelope
-      -> Agent writes build(B, mats, P) using the DSL only
+      -> (text-only input) reference_images has an image model render one
+         catalogue shot of the piece and reads its construction; cached with
+         the prompt that produced it
+      -> Agent writes build(B, mats, P) using the DSL only, FROM that photo
       -> static contract check (no bpy, no I/O, no imports beyond math)
       -> Blender executes it, renders 3 studio views
       -> general_vision.review_images(scope='component') hard gate
@@ -26,6 +29,14 @@ Flow per object:
 Run:
     python furniture_forge.py --object sofa_3seater
     python furniture_forge.py --all
+    python furniture_forge.py --object bookshelf --reference-images off
+    python furniture_forge.py --object bookshelf --use_trellis   # GPU box only
+
+--reference-images generate|local|web|off   (default generate: photos dropped
+    into runtime/reference/<id>/ first, then the image model -- needs
+    IMAGE_API_KEY in the environment or runtime/.env; off = previous behaviour)
+--use_trellis   off by default. Writes the hand-off for the appearance stage
+    (trellis_stage.py); generation itself is not wired yet.
 """
 
 from __future__ import annotations
@@ -34,19 +45,25 @@ import argparse
 import ast
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+import material_spec  # noqa: E402  (sibling module, stdlib only)
+import reference_images  # noqa: E402
+import trellis_stage  # noqa: E402
+
+ROOT = Path(os.environ.get("CODEINDOOR_ROOT", r"E:/3DUse/SceneCode_audit"))
 ADAPTER = ROOT / "adsl_adapter"
 OUT = ROOT / "runtime/outputs/forge"
 REFERENCE = ROOT / "runtime/reference"
 SUPPLY = ROOT / "runtime/outputs/scene_layout/supply_plan.json"
 BLENDER = r"E:/Blender/blender.exe"
-GATEWAY = "http://127.0.0.1:8765/v1/chat/completions"
+GATEWAY = os.environ.get("CODEINDOOR_GATEWAY",
+                         "http://127.0.0.1:8765/v1/chat/completions")
 PROFILE = Path(r"E:/3DUse/FineScene/configs/deepseek-flash.yaml")
 FINESCENE_SRC = Path(r"E:/3DUse/FineScene/src")
 if str(FINESCENE_SRC) not in sys.path:
@@ -123,6 +140,25 @@ MATERIAL KEYS (use these strings as `mat`):
   screen_black                              glossy near-black display glass
   plastic_black                             matte black polymer (bezels, casings)
   steel_brushed                             brushed steel (brackets, hardware)
+
+PARAMETRIC MATERIALS (when no key above is the right finish or colour):
+  "<class>:#RRGGBB"  or  "<class>:#RRGGBB:<roughness 0-1>"
+  class is one of:
+    paint     lacquer, painted timber or MDF, enamel      "paint:#F3F1EC"
+    wood      timber with grain, any species/stain         "wood:#B58A5A"
+    fabric    woven upholstery, any colour                 "fabric:#8FA08A"
+    velvet    pile fabric with sheen                       "velvet:#2F4A3C"
+    leather   smooth leather                               "leather:#5A3A22"
+    metal     the hex is the metal's tint                  "metal:#1A1A1A:0.5"
+    plastic   moulded polymer                              "plastic:#E8E8E8"
+    glass     clear or tinted, see-through                 "glass:#FFFFFF"
+    ceramic   glazed ceramic                               "ceramic:#DCD6CC"
+    stone     marble / terrazzo / concrete                 "stone:#BEB9B0:0.6"
+    shade     lamp shade that glows                        "shade:#F2E3C4"
+  The hex is the surface colour as you would sample it from a photo. Use these
+  freely: the named keys are a convenience, not a limit. Define each finish
+  once as a variable at the top of build() (e.g.  body = "paint:#F3F1EC") and
+  pass the variable, so the finish can be changed in one place.
   Never put an upholstery or timber key on a screen, a glass pane or a metal
   bracket: the weave/grain texture is the tell, and the gate rejects it.
 
@@ -197,6 +233,24 @@ HARD RULES:
 6. Proportions must match P exactly: total width ~P["width"], depth ~P["depth"],
    height ~P["height"]. Fit inside that envelope; do not exceed it.
 7. Output ONLY Python source in one ```python block.
+8. WHEN A REFERENCE PHOTO IS ATTACHED, you are reproducing that product, not
+   designing a new one. The photo decides the DESIGN: which parts exist and how
+   many, their relative proportions, where they join, which are curved, and the
+   materials. The envelope P and any explicit number in the brief decide the
+   SIZE; where photo and numbers disagree, the numbers win. Concretely:
+   - count what you see (shelves, doors, legs, cushions) and build that count
+   - keep the photo's ratios (shelf spacing, leg height vs carcass, arm vs seat)
+     and express them as fractions of P["width"/"depth"/"height"], never as
+     absolute constants, so the piece still looks right if P changes
+   - name every part after what it is in the photo (shelf_1, door_left,
+     leg_front_right); one named part per visible component
+   - give each visible material its real finish and colour: a named key if
+     one matches, otherwise a PARAMETRIC MATERIAL with the hex read from the
+     photo (a white lacquered shelf is "paint:#F3F1EC", not oak_joinery)
+   - parts the photo cannot show (the back, the underside) are still built,
+     in the plainest form consistent with what is visible
+   The other hard rules still apply: a photo of a simple piece does not excuse
+   holes, floating parts or missing materials.
 
 Known Blender 5.2 traps you cannot hit through this DSL, but respect the spirit:
 keep parts as separate named objects, let B.box(bevel=...) do the easing, and
@@ -286,8 +340,16 @@ def check_contract(code: str) -> tuple[bool, str]:
         tree = ast.parse(code)
     except SyntaxError as exc:
         return False, f"syntax error: {exc}"
-    if any(isinstance(n, (ast.Import, ast.ImportFrom)) for n in ast.walk(tree)):
-        return False, "imports are not allowed"
+    # `import math` is harmless (math is already in scope) and the model writes
+    # it out of habit: rejecting it cost a whole attempt on two of three live
+    # runs. It is tolerated rather than stripped, so the executed file is still
+    # byte-identical to what the model sent and the provenance hash holds.
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) or (
+                isinstance(n, ast.Import)
+                and any(a.name != "math" or a.asname not in (None, "math")
+                        for a in n.names)):
+            return False, "imports are not allowed (math is already available)"
 
     # Locals, loop targets and parameters are legitimately free names; only
     # names that resolve to *nothing* in the sandbox are a contract violation.
@@ -308,6 +370,13 @@ def check_contract(code: str) -> tuple[bool, str]:
                 return False, f"unknown name '{node.id}' (only the DSL is available)"
         if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
             return False, "dunder access is not allowed"
+    # A malformed parametric material would only surface inside Blender; the
+    # grammar is pure Python, so reject it here with the valid forms spelled out.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                and material_spec.looks_parametric(node.value) \
+                and material_spec.parse(node.value) is None:
+            return False, material_spec.explain(node.value)
     fn = next((n for n in tree.body
                if isinstance(n, ast.FunctionDef) and n.name == "build"), None)
     if fn is None:
@@ -341,7 +410,8 @@ def run_blender(code: str, params: dict, oid: str, attempt: int) -> dict:
     return res
 
 
-def visual_gate(views: list[Path], brief: str, oid: str) -> dict:
+def visual_gate(views: list[Path], brief: str, oid: str,
+                reference_summary: str | None = None) -> dict:
     from general_vision import review_images
     if len(views) < 3:
         return {"accepted": False, "status": "insufficient_views"}
@@ -375,6 +445,16 @@ def visual_gate(views: list[Path], brief: str, oid: str) -> dict:
          "feature": "cushion and frame edges are eased, not razor sharp",
          "visible_evidence": "rounded cushion edges and piping"},
     ]
+    if reference_summary:
+        # The reviewer only sees our renders, so the photo reaches it as the
+        # description read from it. Without this the gate would happily accept
+        # a generic piece that ignores the reference it was written from.
+        style.append(
+            {"id": "matches_reference",
+             "feature": "the object reproduces this reference design: "
+                        + reference_summary[:600],
+             "visible_evidence": "same part count and arrangement, similar "
+                                 "proportions and materials as described"})
     request = {"id": oid, "original_user_request": brief,
                "style_requirements": style, "kind": "furniture"}
     report = review_images(views, request, str(PROFILE),
@@ -400,10 +480,8 @@ def visual_gate(views: list[Path], brief: str, oid: str) -> dict:
 
 
 def _image_part(path: Path) -> dict:
-    import base64
-    b64 = base64.b64encode(path.read_bytes()).decode("ascii")
-    return {"type": "image_url",
-            "image_url": {"url": "data:image/png;base64," + b64}}
+    # Renders are PNG, retrieved photos are usually JPEG: sniff, do not assume.
+    return reference_images.image_part(path)
 
 
 def load_reference(oid: str) -> dict | None:
@@ -517,9 +595,24 @@ def replay(oid: str) -> dict:
             "stitched": len(res.get("coplanar_fixed") or [])}
 
 
+def reference_summary(image_ref: dict | None) -> str | None:
+    """One paragraph describing the photo, for the visual gate."""
+    if not image_ref:
+        return None
+    r = image_ref.get("reading") or {}
+    parts = ", ".join(f"{p.get('count', 1)} x {p.get('name')}"
+                      for p in (r.get("parts") or [])[:14])
+    text = " ".join(x for x in (str(r.get("design_summary") or "").strip(),
+                                f"Parts: {parts}." if parts else "") if x)
+    return text or None
+
+
 def forge(entry: dict, max_attempts: int = 3,
           resume_code: str | None = None,
-          initial_feedback: str | None = None) -> dict:
+          initial_feedback: str | None = None,
+          reference_mode: str = "generate",
+          refresh_reference: bool = False,
+          use_trellis: bool = False) -> dict:
     oid = entry["id"]
     dims = entry["dimensions"]
     params = {"width": round(float(dims[0]), 3), "depth": round(float(dims[1]), 3),
@@ -527,6 +620,31 @@ def forge(entry: dict, max_attempts: int = 3,
               "mount": entry.get("mount", "floor")}
     brief = entry.get("brief") or oid
     reference = load_reference(oid)
+    # Retrieval never blocks the forge: no photo (offline, nothing usable) just
+    # means the Agent authors from the brief, exactly as before.
+    try:
+        image_ref = reference_images.find_reference_image(
+            oid, brief, [params["width"], params["depth"], params["height"]],
+            mode=reference_mode, refresh=refresh_reference,
+            mount=params["mount"])
+    except Exception as exc:  # noqa: BLE001
+        print(f"[forge] reference retrieval failed: {type(exc).__name__}: {exc}",
+              flush=True)
+        image_ref = None
+    ref_image = Path(image_ref["path"]) if image_ref else None
+    ref_summary = reference_summary(image_ref)
+    ref_record = None
+    if image_ref:
+        src = image_ref.get("source") or {}
+        ref_record = {"image": image_ref["path"], "provider": src.get("provider"),
+                      "page": src.get("page"), "licence": src.get("licence"),
+                      "sha256": src.get("sha256"), "model": src.get("model"),
+                      "prompt": src.get("prompt")}
+        print(f"[forge] {oid}: reference photo from {src.get('provider')} "
+              f"({src.get('page') or src.get('file')})", flush=True)
+    else:
+        print(f"[forge] {oid}: no reference photo (mode={reference_mode}); "
+              f"authoring from the brief", flush=True)
     log: list[dict] = []
     feedback: str | None = initial_feedback
     prior_code: str | None = None
@@ -564,13 +682,20 @@ def forge(entry: dict, max_attempts: int = 3,
             + f"Style context: contemporary living room; neutral textiles, warm timber, "
               f"brass hardware. Photoreal, not stylised.\n"
             + ((reference_block(reference) + "\n") if reference else "")
+            + ((reference_images.reading_block(image_ref) + "\n") if image_ref else "")
             + "Write the build(B, mats, P) program now."
         )
         if feedback:
             spec += "\n\nThe previous attempt was rejected. Fix exactly this:\n" + feedback
 
+        # The photo travels with the spec on every attempt, so a repair round
+        # is still judged against the product and not against the last render.
+        first: str | list = spec
+        if ref_image is not None:
+            first = [{"type": "text", "text": spec}, _image_part(ref_image),
+                     {"type": "text", "text": "Above: the reference photo."}]
         if not prior_code:
-            messages = [{"role": "user", "content": spec}]
+            messages = [{"role": "user", "content": first}]
         else:
             # Show the Agent its own render: text findings alone led it to fix
             # the wrong thing, while the black slot between cushions was obvious
@@ -586,7 +711,12 @@ def forge(entry: dict, max_attempts: int = 3,
                 content.append({"type": "text", "text":
                                 "That version was rejected by the visual gate. Return "
                                 "the COMPLETE corrected program, not a patch."})
-            messages = [{"role": "user", "content": spec},
+            if ref_image is not None:
+                content.append({"type": "text", "text":
+                                "Compare your result with the reference photo in "
+                                "the first message: where part count, proportions "
+                                "or materials differ, the photo is right."})
+            messages = [{"role": "user", "content": first},
                         {"role": "assistant", "content": "```python\n" + prior_code + "\n```"},
                         {"role": "user", "content": content}]
 
@@ -697,7 +827,8 @@ def forge(entry: dict, max_attempts: int = 3,
                           "mats, and the whole piece must stay inside the envelope.")
             continue
 
-        gate = visual_gate(views, brief, oid) if views else {"accepted": False}
+        gate = (visual_gate(views, brief, oid, ref_summary) if views
+                else {"accepted": False})
         entry_log["gate"] = gate
         log.append(entry_log)
 
@@ -732,12 +863,25 @@ def forge(entry: dict, max_attempts: int = 3,
                   "blend": str(accepted_dir / f"{oid}.blend"),
                   "views": [str(accepted_dir / Path(v).name) for v in views],
                   "objects": res.get("objects"), "vertices": res.get("vertices"),
-                  "bounds": res.get("bounds"), "gate": gate, "log": log}
+                  "bounds": res.get("bounds"), "gate": gate, "log": log,
+                  "reference_image": ref_record}
+        if image_ref:
+            # Keep the photo and its reading beside the program written from it.
+            (accepted_dir / "reference_image.json").write_text(
+                json.dumps({k: v for k, v in image_ref.items() if k != "candidates"},
+                           ensure_ascii=False, indent=2), encoding="utf-8")
+        if use_trellis:
+            handoff = trellis_stage.write_handoff(
+                oid, accepted_dir, brief, params, result, image_ref)
+            result["trellis"] = trellis_stage.run(handoff)
+            print(f"[forge] {oid}: trellis -> {result['trellis']['status']} "
+                  f"({result['trellis']['note']})", flush=True)
         (OUT / f"{oid}_result.json").write_text(
             json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         return result
 
-    result = {"ok": False, "id": oid, "attempts": len(log), "log": log}
+    result = {"ok": False, "id": oid, "attempts": len(log), "log": log,
+              "reference_image": ref_record}
     (OUT / f"{oid}_result.json").write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
@@ -754,6 +898,19 @@ def main() -> int:
     parser.add_argument("--replay", action="store_true",
                         help="re-run the accepted program through the current "
                              "runner without calling the model; keeps code_sha")
+    parser.add_argument("--reference-images", default="generate",
+                        choices=("generate", "local", "web", "off"),
+                        help="generate: photos in runtime/reference/<id>/ first, "
+                             "then the image model; local: only those photos; "
+                             "web: open-licence image search; off: author from "
+                             "the brief alone (previous behaviour)")
+    parser.add_argument("--refresh-reference", action="store_true",
+                        help="ignore the cached photo choice and search again")
+    parser.add_argument("--use_trellis", "--use-trellis", dest="use_trellis",
+                        action="store_true",
+                        help="after acceptance, write the TRELLIS hand-off and "
+                             "call the appearance stage (off by default; the "
+                             "generation itself is not wired yet)")
     args = parser.parse_args()
 
     supply = json.loads(SUPPLY.read_text(encoding="utf-8"))
@@ -785,8 +942,13 @@ def main() -> int:
         print(f"[forge] {target['id']} ...", flush=True)
         res = forge(target, max_attempts=args.attempts,
                     resume_code=args.resume_code,
-                    initial_feedback=args.initial_feedback)
+                    initial_feedback=args.initial_feedback,
+                    reference_mode=args.reference_images,
+                    refresh_reference=args.refresh_reference,
+                    use_trellis=args.use_trellis)
         summary.append({"id": res["id"], "ok": res["ok"],
+                        "reference": bool(res.get("reference_image")),
+                        "trellis": (res.get("trellis") or {}).get("status"),
                         "attempts": res["attempts"],
                         "objects": res.get("objects"),
                         "gate": (res.get("gate") or {}).get("verdict")})

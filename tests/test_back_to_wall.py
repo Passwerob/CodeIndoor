@@ -34,9 +34,12 @@ ROOM = {
     "wall_thickness": 0.15,
 }
 
+# Sizes are LOCAL [width, depth, height], the convention the library uses. They
+# were once typed already-rotated ([0.35, 2.0, ...]), which left the "correct"
+# bookshelf a metre inside the east wall while the test still passed.
 SPECS = {
-    "bookshelf": {"mount": "floor", "size": [0.35, 2.0, 2.0], "local_z": [0.0, 2.0]},
-    "tv_cabinet": {"mount": "floor", "size": [0.4, 1.8, 0.55], "local_z": [0.0, 0.55]},
+    "bookshelf": {"mount": "floor", "size": [2.0, 0.35, 2.0], "local_z": [0.0, 2.0]},
+    "tv_cabinet": {"mount": "floor", "size": [1.8, 0.4, 0.55], "local_z": [0.0, 0.55]},
 }
 
 
@@ -58,6 +61,8 @@ def test_expect_catches_reversed():
     issues2 = expect("bookshelf", ok, {"bookshelf": dict(ok)},
                      SPECS["bookshelf"], ROOM, ["against_wall:east"])
     assert not any(i["id"] == "wall.facing" for i in issues2), issues2
+    # The correct pose must be clean outright, not merely "not reversed".
+    assert not issues2, issues2
 
 
 def test_derive_fixes_reversed_seed():
@@ -73,7 +78,23 @@ def test_derive_fixes_reversed_seed():
     assert abs(objects[1]["placement"]["yaw_deg"] - 180) < 1e-6, objects[1]
 
 
+def test_clearance_uses_rotated_extents():
+    """A sofa turned 90 deg is 2.2 m along y; 7 cm of real gap is not 0.5 m."""
+    from scene_layout import half_extents
+    sofa = {"x": 0.0, "y": 0.0, "z": 0.0, "yaw_deg": 90.0, "size": [2.2, 0.9, 0.88]}
+    sofa["hx"], sofa["hy"] = half_extents(sofa["size"], 90.0)
+    chair_spec = {"mount": "floor", "size": [0.86, 0.86, 0.82]}
+    rel = ["clearance:sofa_3seater:0.5"]
+    near = {"x": 0.0, "y": 1.6, "z": 0.0, "yaw_deg": 0.0}
+    issues = expect("armchair_east", near, {"sofa_3seater": sofa}, chair_spec, ROOM, rel)
+    assert any(i["id"].startswith("clearance.sofa_3seater") for i in issues), issues
+    far = {"x": 0.0, "y": 2.05, "z": 0.0, "yaw_deg": 0.0}
+    issues = expect("armchair_east", far, {"sofa_3seater": sofa}, chair_spec, ROOM, rel)
+    assert not any(i["id"].startswith("clearance") for i in issues), issues
+
+
 if __name__ == "__main__":
+    test_clearance_uses_rotated_extents()
     test_resolve_pose_back_to_wall()
     test_expect_catches_reversed()
     test_derive_fixes_reversed_seed()
