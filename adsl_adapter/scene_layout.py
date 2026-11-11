@@ -640,8 +640,13 @@ def expect(oid: str, pose: dict, placed: dict, spec: dict, room: dict,
                 # half-extent as a radius (the previous arithmetic) subtracted
                 # the longest side of the sofa from a side-by-side distance and
                 # reported a 0.4 m gap as -0.56 m.
-                gx = abs(x - target["x"]) - (spec["size"][0] / 2 + target["size"][0] / 2)
-                gy = abs(y - target["y"]) - (spec["size"][1] / 2 + target["size"][1] / 2)
+                # Half-extents are taken AFTER rotation: the unrotated size
+                # let a sofa turned 90 degrees pass a 0.5 m clearance with 7 cm
+                # of real gap.
+                ohx, ohy = half_extents(spec["size"], yaw)
+                thx, thy = half_extents(target["size"], target.get("yaw_deg", 0.0))
+                gx = abs(x - target["x"]) - (ohx + thx)
+                gy = abs(y - target["y"]) - (ohy + thy)
                 gap = max(gx, gy)
                 if gap < want_min - 1e-3:
                     # The requirement travels in the id so a repair hint can be

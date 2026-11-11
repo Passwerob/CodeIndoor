@@ -47,6 +47,7 @@ from baroque_lib import (Builder, volute, cabriole_leg, acanthus_leaf,  # noqa: 
                          torus, fluted_column, corinthian_capital, dentil_row)
 from curve_dsl import (sweep, bezier_tube, piping_loop, lathe,  # noqa: E402
                        arc_tube)
+import material_spec  # noqa: E402  (pure Python grammar for parametric keys)
 
 # --------------------------------------------------------------------------- #
 # material set for interior furniture (the Baroque palette is velvets + gilt;
@@ -256,6 +257,74 @@ def build_materials() -> dict:
     }
 
 
+def parametric_material(spec: dict):
+    """Build a native Blender material from a parsed `<class>:#hex[:rough]` key.
+
+    No image textures: the class picks the shading model, the colour and
+    roughness come from the key, and grain / weave are procedural. That keeps
+    a finish a parameter of the program (editable by changing a string) instead
+    of a file that has to exist on disk.
+    """
+    kind, rgb, rough, name = spec["kind"], spec["rgb"], spec["roughness"], spec["name"]
+    if kind == "wood":
+        dark, light = material_spec.shades(rgb, 0.55, 1.18)
+        mat = wood(name, dark, light, grain=5.5, coat=0.22)
+        mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = rough
+    elif kind in ("fabric", "velvet"):
+        dark, light = material_spec.shades(rgb, 0.70, 1.12)
+        mat = fabric(name, rgb, dark, light, roughness=rough,
+                     sheen=0.80 if kind == "velvet" else 0.30)
+    else:
+        metallic = 0.92 if kind == "metal" else 0.0
+        emission = (*rgb, 0.45) if kind == "shade" else None
+        mat = solid(name, rgb, metallic=metallic, roughness=rough, emission=emission)
+        bsdf = mat.node_tree.nodes["Principled BSDF"]
+        if kind in ("paint", "ceramic"):
+            bsdf.inputs["Coat Weight"].default_value = 0.30 if kind == "ceramic" else 0.15
+            bsdf.inputs["Coat Roughness"].default_value = 0.12
+        elif kind == "glass":
+            bsdf.inputs["Transmission Weight"].default_value = 1.0
+            bsdf.inputs["IOR"].default_value = 1.45
+        elif kind == "leather":
+            n = _noise(mat.node_tree, 95.0, detail=3.0)
+            _bump(mat.node_tree, n.outputs["Fac"], bsdf, 0.14, 0.0006)
+            bsdf.inputs["Sheen Weight"].default_value = 0.10
+    mat["adsl_material"] = spec["key"]
+    mat["adsl_material_class"] = kind
+    mat["adsl_material_hex"] = spec["hex"]
+    mat["pbr_source"] = "parametric (native Principled BSDF, procedural detail)"
+    return mat
+
+
+class MaterialTable(dict):
+    """The named palette plus parametric keys built the first time they are
+    asked for. Every lookup path Builder might use (`[]`, `.get`, `in`) goes
+    through the same resolver, so a parametric key behaves like a named one."""
+
+    def resolve(self, key):
+        if dict.__contains__(self, key):
+            return dict.__getitem__(self, key)
+        spec = material_spec.parse(key) if isinstance(key, str) else None
+        if spec is None:
+            return None
+        mat = parametric_material(spec)
+        dict.__setitem__(self, key, mat)
+        return mat
+
+    def __missing__(self, key):
+        mat = self.resolve(key)
+        if mat is None:
+            raise KeyError(key)
+        return mat
+
+    def get(self, key, default=None):
+        mat = self.resolve(key)
+        return default if mat is None else mat
+
+    def __contains__(self, key):
+        return self.resolve(key) is not None
+
+
 # --------------------------------------------------------------------------- #
 # lights / camera (studio setup for the component gate)
 # --------------------------------------------------------------------------- #
@@ -446,18 +515,24 @@ def main() -> int:
     for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
 
-    mats = build_materials()
+    mats = MaterialTable(build_materials())
 
     # Agent programs pass either a material key string or the material object
     # from mats[key]. Builder._register only understand keys and silently skips
     # anything else, which rendered an all-white sofa that still passed the
     # visual gate. Accept both forms.
-    by_material_id = {id(m): k for k, m in mats.items()}
     original_register = Builder._register
 
     def register(self, ob, ptype, params, local, mat_key):
         if mat_key is not None and not isinstance(mat_key, str):
-            mat_key = by_material_id.get(id(mat_key))
+            # Looked up live: parametric materials are created during the run,
+            # so a table snapshotted before it would not know them.
+            wanted = id(mat_key)
+            mat_key = next((k for k, m in mats.items() if id(m) == wanted), None)
+        elif isinstance(mat_key, str) and mats.get(mat_key) is None:
+            # A key that resolves to nothing used to be skipped silently and
+            # the part rendered paper-white. Say what is wrong instead.
+            raise ValueError(material_spec.explain(mat_key))
         return original_register(self, ob, ptype, params, local, mat_key)
 
     Builder._register = register
