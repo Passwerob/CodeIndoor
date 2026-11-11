@@ -1,0 +1,30 @@
+# ===== Secrets (NEVER commit) =====
+.env
+*.env
+
+# ===== Heavy / generated runtime artifacts (incl. runtime/.env secret) =====
+runtime/
+cache_tmp/
+.workbuddy/
+
+# ===== Build / render outputs =====
+*.blend
+*.blend1
+*.png
+*.jpg
+*.log
+
+# ===== Python =====
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# ===== Local env setup dir (keep the helper script) =====
+env/*
+!env/prepare_local.py
+
+# ===== Root-level probe / sample JSON outputs (regenerable, noisy) =====
+/*.json
+/_fetch_list.txt
+/_tree.json
