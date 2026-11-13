@@ -26,7 +26,9 @@ it: code and image must describe the same object or a code edit stops meaning
 anything once appearance is generated.
 
 Image API: any OpenAI-compatible /images/generations endpoint. Configure with
-IMAGE_API_KEY, IMAGE_API_BASE and IMAGE_MODEL, as environment variables or as
+IMAGE_API_KEY, IMAGE_API_BASE and IMAGE_MODEL (and an optional second endpoint,
+IMAGE_FALLBACK_API_KEY / _BASE / IMAGE_FALLBACK_MODEL, tried when the first
+fails), as environment variables or as
 lines in runtime/.env (gitignored). The key is never logged or stored.
 
 Everything fetched or generated is cached under runtime/reference/<oid>/ with a manifest
@@ -68,7 +70,10 @@ MAX_CANDIDATES = 6
 PROVIDERS = ("openverse", "commons")
 ENV_FILE = ROOT / "runtime/.env"
 IMAGE_API_BASE = "https://us.novaiapi.com/v1"
+IMAGE_FALLBACK_API_BASE = "https://api.chimerahub.org/v1"
 IMAGE_MODEL = "gpt-image-2.6"
+IMAGE_TIMEOUT = 180                      # a hung relay must not stall the batch
+MAX_GENERATED_BYTES = 24 * 1024 * 1024   # our own render, not a web thumbnail
 GENERATE_TRIES = 2
 
 
@@ -111,10 +116,10 @@ def image_part(path: Path) -> dict:
                                  + base64.b64encode(data).decode("ascii")}}
 
 
-def _get(url: str, timeout: int = 30) -> bytes:
+def _get(url: str, timeout: int = 30, limit: int = MAX_IMAGE_BYTES) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read(MAX_IMAGE_BYTES + 1)
+        return resp.read(limit + 1)
 
 
 def _chat(messages: list, max_tokens: int = 1200) -> dict | None:
@@ -303,47 +308,86 @@ def generation_prompt(brief: str, dims: list[float], mount: str = "floor") -> st
         f"dimension lines, no watermark. Photorealistic, sharp, true materials.")
 
 
+def image_endpoints() -> list[dict]:
+    """Image endpoints in the order they are tried: primary, then fallback.
+
+    Relay providers lose their upstream channel without warning (the primary
+    answered 503 "no available channel" for every image model for a whole
+    evening), so one endpoint is not enough to run a batch on. An endpoint
+    with no key is simply absent; nothing here is required.
+    """
+    out = []
+    for label, prefix, base_default in (
+            ("primary", "IMAGE_API", IMAGE_API_BASE),
+            ("fallback", "IMAGE_FALLBACK_API", IMAGE_FALLBACK_API_BASE)):
+        key = setting(prefix + "_KEY")
+        if not key:
+            continue
+        base = (setting(prefix + "_BASE", base_default) or base_default).rstrip("/")
+        if not base.endswith("/v1"):
+            base += "/v1"       # providers publish the bare host as often as not
+        model_name = "IMAGE_MODEL" if label == "primary" else "IMAGE_FALLBACK_MODEL"
+        out.append({"label": label, "key": key, "base": base,
+                    "model": setting(model_name, IMAGE_MODEL) or IMAGE_MODEL})
+    return out
+
+
+def _generate_once(endpoint: dict, prompt: str, size: str) -> bytes:
+    """One call to one OpenAI-compatible images endpoint; raises on failure."""
+    payload = {"model": endpoint["model"], "prompt": prompt, "n": 1, "size": size}
+    req = urllib.request.Request(
+        endpoint["base"] + "/images/generations",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json",
+                 "Authorization": "Bearer " + endpoint["key"],
+                 "User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=IMAGE_TIMEOUT) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    item = (body.get("data") or [{}])[0]
+    if item.get("b64_json"):            # some relays answer inline ...
+        data = base64.b64decode(item["b64_json"])
+    elif item.get("url"):               # ... others with a short-lived URL
+        data = _get(item["url"], timeout=120, limit=MAX_GENERATED_BYTES)
+    else:
+        raise RuntimeError("response carries neither b64_json nor url")
+    if not image_mime(data):
+        raise RuntimeError("endpoint returned something that is not an image")
+    return data
+
+
 def generate_image(prompt: str, size: str, path: Path) -> dict | None:
-    """One call to an OpenAI-compatible images endpoint. None on any failure."""
-    key = setting("IMAGE_API_KEY")
-    if not key:
+    """Render one image, trying each configured endpoint in turn.
+
+    None when no endpoint is configured or all of them fail -- the caller then
+    authors from the brief alone.
+    """
+    endpoints = image_endpoints()
+    if not endpoints:
         print("[reference] IMAGE_API_KEY not set (env or runtime/.env); "
               "cannot generate a reference image", flush=True)
         return None
-    base = (setting("IMAGE_API_BASE", IMAGE_API_BASE) or IMAGE_API_BASE).rstrip("/")
-    model = setting("IMAGE_MODEL", IMAGE_MODEL)
-    payload = {"model": model, "prompt": prompt, "n": 1, "size": size}
-    try:
-        req = urllib.request.Request(
-            base + "/images/generations",
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            method="POST",
-            headers={"Content-Type": "application/json",
-                     "Authorization": "Bearer " + key, "User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-        item = (body.get("data") or [{}])[0]
-        if item.get("b64_json"):
-            data = base64.b64decode(item["b64_json"])
-        elif item.get("url"):
-            data = _get(item["url"], timeout=120)
-        else:
-            raise RuntimeError("response carries neither b64_json nor url")
-    except Exception as exc:  # noqa: BLE001
-        # HTTPError's str() is the status line only: no key, no request body.
-        print(f"[reference] image generation failed: {type(exc).__name__}: {exc}",
-              flush=True)
+    data, used, failures = None, None, []
+    for endpoint in endpoints:
+        try:
+            data, used = _generate_once(endpoint, prompt, size), endpoint
+            break
+        except Exception as exc:  # noqa: BLE001
+            # HTTPError's str() is the status line only: no key, no request body.
+            note = f"{endpoint['label']} ({endpoint['base']}): {type(exc).__name__}: {exc}"
+            failures.append(note)
+            print(f"[reference] image generation failed on {note}", flush=True)
+    if data is None:
         return None
+    if failures:
+        print(f"[reference] image served by the {used['label']} endpoint", flush=True)
     mime = image_mime(data)
-    if not mime:
-        print("[reference] image endpoint returned something that is not an image",
-              flush=True)
-        return None
     path = path.with_suffix("." + mime.split("/")[1])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
-    return {"file": path.name, "provider": "generated", "model": model,
-            "endpoint": base, "prompt": prompt, "size": size,
+    return {"file": path.name, "provider": "generated", "model": used["model"],
+            "endpoint": used["base"], "endpoint_role": used["label"],
+            "failed_endpoints": failures, "prompt": prompt, "size": size,
             "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data),
             "licence": "generated", "page": None, "full": None, "query": None,
             "title": "generated reference"}
