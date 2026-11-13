@@ -30,7 +30,7 @@ from assemble_scene import (OUT, load_lounge_objects, render_interior,  # noqa: 
 GATEWAY = "http://127.0.0.1:8765/v1/chat/completions"
 AST = OUT / "living_room.adsl.json"
 QA = OUT / "scene_visual_qa.json"
-LAYOUT = Path(r"E:/3DUse/SceneCode_audit/runtime/outputs/scene_layout/layout.json")
+LAYOUT = Path(r"E:/3DUse/New/CodeIndoor/runtime/outputs/scene_layout/layout.json")
 EDITED_AST = OUT / "living_room_edited.adsl.json"
 REPORT = OUT / "LOCAL_EDIT_REPORT.json"
 

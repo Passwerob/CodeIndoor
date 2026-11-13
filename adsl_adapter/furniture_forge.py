@@ -56,7 +56,7 @@ import material_spec  # noqa: E402  (sibling module, stdlib only)
 import reference_images  # noqa: E402
 import trellis_stage  # noqa: E402
 
-ROOT = Path(os.environ.get("CODEINDOOR_ROOT", r"E:/3DUse/SceneCode_audit"))
+ROOT = Path(os.environ.get("CODEINDOOR_ROOT", r"E:/3DUse/New/CodeIndoor"))
 ADAPTER = ROOT / "adsl_adapter"
 OUT = ROOT / "runtime/outputs/forge"
 REFERENCE = ROOT / "runtime/reference"

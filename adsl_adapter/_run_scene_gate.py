@@ -3,7 +3,7 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 sys.path.insert(0, str(ROOT / "adsl_adapter"))
 sys.path.insert(0, str(ROOT.parent / "FineScene" / "src"))
 

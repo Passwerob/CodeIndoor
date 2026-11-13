@@ -44,7 +44,7 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 GATEWAY_LOG = ROOT / "runtime/outputs/gateway_calls.jsonl"
 FORGE = ROOT / "runtime/outputs/forge"
 

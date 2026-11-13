@@ -20,7 +20,7 @@ from pathlib import Path
 
 import bpy
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 BLEND = ROOT / "runtime/outputs/living_room/assets/living_room_assets.blend"
 OUT = ROOT / "runtime/outputs/scene_layout/room_measured.json"
 

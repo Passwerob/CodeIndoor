@@ -50,7 +50,11 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(os.environ.get("CODEINDOOR_ROOT", r"E:/3DUse/SceneCode_audit"))
+# Default root is THIS repo's top level (derived from this file), so a fresh
+# clone works out of the box and generated artefacts land here -- not in some
+# other workspace. Override with CODEINDOOR_ROOT if you need another location.
+DEFAULT_ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get("CODEINDOOR_ROOT", DEFAULT_ROOT))
 REFERENCE = ROOT / "runtime/reference"
 GATEWAY = os.environ.get("CODEINDOOR_GATEWAY",
                          "http://127.0.0.1:8765/v1/chat/completions")
@@ -150,7 +154,7 @@ def fallback_query(brief: str) -> str:
 QUERY_PROMPT = """Turn this furniture brief into image-search queries that would
 find a clean PRODUCT PHOTO of such a piece (catalogue style: one object, plain
 background). Photo archives match on few words, so long queries return
-nothing: drop all dimensions, counts and construction detail. Return JSON
+nothing: drop all dimensions, counts and construction detail. Return a json object
 {{"queries": [...]}} with exactly 3 queries, each 2 to 3 words:
   1. material + furniture type        (e.g. "oak bookshelf")
   2. style or synonym + furniture type (e.g. "open bookcase")
@@ -362,7 +366,7 @@ parts. Reject drawings, catalogue page scans, room scenes where the piece is
 small, close-up details, and the wrong furniture type. If none is usable, say
 so -- a wrong reference is worse than none.
 
-Return JSON:
+Return a json object:
 {{
   "choice": <index, or -1 if none is usable>,
   "reason": "<one sentence>",

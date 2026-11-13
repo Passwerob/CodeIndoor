@@ -1,6 +1,6 @@
 """Run INSIDE Blender 5.2.2 to verify P3 localized editing end-to-end.
 
-    E:/Blender/blender.exe -b --python E:/3DUse/SceneCode_audit/adsl_adapter/test_incremental_blender.py
+    E:/Blender/blender.exe -b --python E:/3DUse/New/CodeIndoor/adsl_adapter/test_incremental_blender.py
 
 Test A: lower the backrest -> rebuild ONLY that component.
 Test B: relation edit -> move a component WITHOUT rebuilding its geometry.
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, r"E:/3DUse/aDSL/adsl-core")
-sys.path.insert(0, r"E:/3DUse/SceneCode_audit/adsl_adapter")
+sys.path.insert(0, r"E:/3DUse/New/CodeIndoor/adsl_adapter")
 
 import bpy  # noqa: E402
 from mathutils import Vector  # noqa: E402
@@ -29,7 +29,7 @@ from incremental_executor import (  # noqa: E402
     unaffected_violations,
 )
 
-OUT = Path(r"E:/3DUse/SceneCode_audit/runtime/outputs/incremental_test")
+OUT = Path(r"E:/3DUse/New/CodeIndoor/runtime/outputs/incremental_test")
 
 
 def make_chair(back_h: float = 0.60, arm_w: float = 0.08) -> Asset:

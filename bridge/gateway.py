@@ -15,7 +15,7 @@ Design (all rules justified by bridge/probe_deepseek.py + probe_compat.py):
 No key, prompt body or image content is written to logs or reports.
 
 Usage:
-    python E:/3DUse/SceneCode_audit/bridge/gateway.py [--port 8765]
+    python E:/3DUse/New/CodeIndoor/bridge/gateway.py [--port 8765]
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import struct
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -34,8 +35,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 UPSTREAM = "https://api.deepseek.com"
-ENV_FILE = Path(r"E:/3DUse/SceneCode_audit/runtime/.env")
-LOG_FILE = Path(r"E:/3DUse/SceneCode_audit/runtime/outputs/gateway_calls.jsonl")
+ENV_FILE = Path(r"E:/3DUse/New/CodeIndoor/runtime/.env")
+LOG_FILE = Path(r"E:/3DUse/New/CodeIndoor/runtime/outputs/gateway_calls.jsonl")
 
 KNOWN_MODELS = {"deepseek-flash", "deepseek-v4-pro"}
 DEFAULT_MODEL = "deepseek-flash"

@@ -120,6 +120,18 @@ def _principled(name: str):
     return mat, nt, bsdf
 
 
+def _find_bsdf(nt):
+    """Locate the Principled BSDF node by TYPE, not by its display name.
+
+    The node's instance name is localised (e.g. '原理化 BSDF' on a zh_CN
+    Blender), so a string lookup like nodes['Principled BSDF'] KeyError's on a
+    non-English install. The node TYPE is locale-independent."""
+    for node in nt.nodes:
+        if node.type == "BSDF_PRINCIPLED":
+            return node
+    raise RuntimeError("no Principled BSDF node in material node tree")
+
+
 def _noise(nt, scale, detail=3.0, stretch=None):
     tc = nt.nodes.new("ShaderNodeTexCoord")
     vec = tc.outputs["Generated"]
@@ -269,7 +281,7 @@ def parametric_material(spec: dict):
     if kind == "wood":
         dark, light = material_spec.shades(rgb, 0.55, 1.18)
         mat = wood(name, dark, light, grain=5.5, coat=0.22)
-        mat.node_tree.nodes["Principled BSDF"].inputs["Roughness"].default_value = rough
+        _find_bsdf(mat.node_tree).inputs["Roughness"].default_value = rough
     elif kind in ("fabric", "velvet"):
         dark, light = material_spec.shades(rgb, 0.70, 1.12)
         mat = fabric(name, rgb, dark, light, roughness=rough,
@@ -278,7 +290,7 @@ def parametric_material(spec: dict):
         metallic = 0.92 if kind == "metal" else 0.0
         emission = (*rgb, 0.45) if kind == "shade" else None
         mat = solid(name, rgb, metallic=metallic, roughness=rough, emission=emission)
-        bsdf = mat.node_tree.nodes["Principled BSDF"]
+        bsdf = _find_bsdf(mat.node_tree)
         if kind in ("paint", "ceramic"):
             bsdf.inputs["Coat Weight"].default_value = 0.30 if kind == "ceramic" else 0.15
             bsdf.inputs["Coat Roughness"].default_value = 0.12
@@ -482,10 +494,9 @@ def studio(scene, center=(0.0, 0.0, 0.0), with_ground=True):
     plane.name = "ForgeGround"
     m = bpy.data.materials.new("ForgeGroundMat")
     m.use_nodes = True
-    b = m.node_tree.nodes.get("Principled BSDF")
-    if b:
-        b.inputs["Base Color"].default_value = (0.30, 0.29, 0.28, 1)
-        b.inputs["Roughness"].default_value = 0.72
+    b = _find_bsdf(m.node_tree)
+    b.inputs["Base Color"].default_value = (0.30, 0.29, 0.28, 1)
+    b.inputs["Roughness"].default_value = 0.72
     plane.data.materials.append(m)
     return plane
 

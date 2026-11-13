@@ -17,7 +17,7 @@ from agentic_coder import BLENDER, GEN, RUNTIME, code_part
 BASELINE = RUNTIME / "generated_baseline"
 from agentic_pipeline import default_params, visual_critic
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 ADAPTER = ROOT / "adsl_adapter"
 RESULTS = ROOT / "AGENTIC_RESULTS.json"
 SCENE_REPORT = ROOT / "runtime/outputs/agent_scene/report.json"

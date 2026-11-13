@@ -23,7 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 ADSL = Path(r"E:/3DUse/aDSL")
 FINESCENE_SRC = Path(r"E:/3DUse/FineScene/src")
 LOUNGE = Path(r"E:/3DUse/FineScene/deliveries/reception_lounge_adsl_20261104")

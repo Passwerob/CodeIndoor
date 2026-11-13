@@ -21,8 +21,8 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
-RUNTIME = Path(r"E:/3DUse/SceneCode_audit/runtime/outputs/agentic")
-OUT = Path(r"E:/3DUse/SceneCode_audit/runtime/outputs/agent_scene")
+RUNTIME = Path(r"E:/3DUse/New/CodeIndoor/runtime/outputs/agentic")
+OUT = Path(r"E:/3DUse/New/CodeIndoor/runtime/outputs/agent_scene")
 OUT.mkdir(parents=True, exist_ok=True)
 SPECS = RUNTIME / "part_specs.json"
 GEN = RUNTIME / "generated"

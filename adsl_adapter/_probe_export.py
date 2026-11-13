@@ -6,7 +6,7 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 sys.path.insert(0, str(ROOT / "adsl_adapter"))
 SRC = ROOT / "runtime/outputs/living_room/assets/living_room_assets.blend"
 

@@ -1,0 +1,55 @@
+{
+  "case": "high_school_bedroom",
+  "description": "Small high-school student's bedroom. Validates the full local generation loop (reference image -> VLM reading -> Agent build program -> Blender -> visual gate) per piece, then a room layout/assembly pass.",
+  "room": {
+    "width_m": 3.2,
+    "depth_m": 2.8,
+    "height_m": 2.6,
+    "note": "typical small student bedroom; needs a bedroom shell .blend before the layout/assembly pass"
+  },
+  "objects": [
+    {
+      "id": "student_desk",
+      "dimensions": [1.2, 0.6, 0.75],
+      "brief": "Compact student study desk, light wood top with white metal legs, for a high school student's small bedroom",
+      "mount": "floor",
+      "reference_mode": "local",
+      "status": "generated+visual_gate_passed (2026-11-13)"
+    },
+    {
+      "id": "study_chair",
+      "dimensions": [0.45, 0.5, 0.9],
+      "brief": "Simple student study chair, white painted frame with a breathable fabric seat and back",
+      "mount": "floor",
+      "reference_mode": "generate"
+    },
+    {
+      "id": "single_bed",
+      "dimensions": [1.0, 2.0, 0.45],
+      "brief": "Single bed with a simple light-wood frame, a thin mattress and two pillows",
+      "mount": "floor",
+      "reference_mode": "generate"
+    },
+    {
+      "id": "bookshelf",
+      "dimensions": [0.8, 0.3, 1.8],
+      "brief": "Tall narrow open bookshelf, white painted, five evenly spaced shelves",
+      "mount": "floor",
+      "reference_mode": "generate"
+    },
+    {
+      "id": "wardrobe",
+      "dimensions": [1.0, 0.55, 2.0],
+      "brief": "Two-door wardrobe, white painted carcass with two slender vertical handles",
+      "mount": "floor",
+      "reference_mode": "generate"
+    },
+    {
+      "id": "desk_lamp",
+      "dimensions": [0.18, 0.18, 0.45],
+      "brief": "Small desk lamp, white cylindrical base, thin arm and a warm translucent shade",
+      "mount": "floor",
+      "reference_mode": "generate"
+    }
+  ]
+}

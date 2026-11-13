@@ -33,8 +33,8 @@ import time
 import urllib.request
 from pathlib import Path
 
-ADAPTER = Path(r"E:/3DUse/SceneCode_audit/adsl_adapter")
-RUNTIME = Path(r"E:/3DUse/SceneCode_audit/runtime/outputs/agentic")
+ADAPTER = Path(r"E:/3DUse/New/CodeIndoor/adsl_adapter")
+RUNTIME = Path(r"E:/3DUse/New/CodeIndoor/runtime/outputs/agentic")
 GEN = RUNTIME / "generated"
 RUNS = RUNTIME / "runs"
 BLENDER = r"E:/Blender/blender.exe"

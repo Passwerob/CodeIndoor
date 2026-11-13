@@ -37,7 +37,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 ASSET_ROOT = Path(r"E:/3DUse/assets/external/realistic_study_20261019")
 LAYOUT_DIR = ROOT / "runtime/outputs/scene_layout"
 # The finalized layout is the only source: it already contains every pose the

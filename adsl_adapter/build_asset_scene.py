@@ -42,7 +42,7 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from layout_finalize import derive_against_wall_yaw  # noqa: E402
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 FINESCENE_SRC = Path(r"E:/3DUse/FineScene/src")
 ASSET_ROOT = Path(r"E:/3DUse/assets/external/realistic_study_20261019")
 SUPPLY_PATH = ROOT / "runtime/outputs/scene_layout/supply_plan.json"

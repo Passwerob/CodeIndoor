@@ -30,7 +30,7 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 SRC_BLEND = ROOT / "runtime/outputs/living_room/assets/living_room_assets.blend"
 SUPPLY = ROOT / "runtime/outputs/scene_layout/supply_plan.json"
 FORGE = ROOT / "runtime/outputs/forge"

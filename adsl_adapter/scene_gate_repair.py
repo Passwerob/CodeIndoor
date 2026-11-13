@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from scene_layout import (LAYOUT_PATH, ROOM_PATH, expect, load_assets,  # noqa: E402
                           load_room, store, design_pose, OBJECT_LIBRARY)
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 LAYOUT_DIR = ROOT / "runtime/outputs/scene_layout"
 QA = ROOT / "runtime/outputs/living_room/assets/scene_visual_qa.json"
 OUT = LAYOUT_DIR / "layout_gate_repaired.json"

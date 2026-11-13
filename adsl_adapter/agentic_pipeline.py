@@ -34,7 +34,7 @@ from pathlib import Path
 from agentic_coder import BLENDER, GEN, RUNTIME, code_part
 from program_component import ProgramComponent, make_schema
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 UPSTREAM = ROOT / "runtime/outputs/ingested/scene_a2.upstream.json"
 ADAPTER = ROOT / "adsl_adapter"
 SPECS_OUT = RUNTIME / "part_specs.json"

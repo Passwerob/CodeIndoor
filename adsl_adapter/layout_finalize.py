@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from scene_layout import (OBJECT_LIBRARY, load_assets, validate_layout,  # noqa: E402
                           yaw_for_normal)  # noqa: E402
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 LAYOUT_DIR = ROOT / "runtime/outputs/scene_layout"
 LAYOUT = LAYOUT_DIR / "layout.json"
 ROOM = LAYOUT_DIR / "room_measured.json"

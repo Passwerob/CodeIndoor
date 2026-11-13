@@ -19,7 +19,7 @@ from pathlib import Path
 
 import bpy
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 ASSETS = ROOT / "runtime/outputs/living_room/assets"
 SRC = ASSETS / "living_room_assets.blend"
 DST = ASSETS / "living_room_assets_packed.blend"

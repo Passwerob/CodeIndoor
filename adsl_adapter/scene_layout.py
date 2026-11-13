@@ -37,7 +37,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(r"E:/3DUse/SceneCode_audit")
+ROOT = Path(r"E:/3DUse/New/CodeIndoor")
 OUT = ROOT / "runtime/outputs/scene_layout"
 ROOM_PATH = OUT / "room_measured.json"
 LAYOUT_PATH = OUT / "layout.json"
