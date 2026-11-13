@@ -131,6 +131,39 @@ def test_parametric_material_keys():
     assert not ff.check_contract("from math import pi\n" + body)[0]
 
 
+def test_image_endpoint_fallback():
+    import importlib
+    import urllib.error
+    fresh = importlib.reload(ri)
+    for k in ("IMAGE_API_KEY", "IMAGE_FALLBACK_API_KEY", "IMAGE_FALLBACK_API_BASE"):
+        os.environ.pop(k, None)
+    assert fresh.image_endpoints() == []
+    os.environ["IMAGE_FALLBACK_API_KEY"] = "k2"
+    os.environ["IMAGE_FALLBACK_API_BASE"] = "https://example.invalid"   # bare host
+    only = fresh.image_endpoints()
+    assert [e["label"] for e in only] == ["fallback"]
+    assert only[0]["base"] == "https://example.invalid/v1"
+    os.environ["IMAGE_API_KEY"] = "k1"
+    assert [e["label"] for e in fresh.image_endpoints()] == ["primary", "fallback"]
+    seen = []
+
+    def once(endpoint, prompt, size):
+        seen.append(endpoint["label"])
+        if endpoint["label"] == "primary":
+            raise urllib.error.HTTPError("u", 503, "Service Unavailable", None, None)
+        return PNG
+    fresh._generate_once = once
+    made = fresh.generate_image("p", "1024x1024", TMP / "fb" / "gen_00")
+    assert seen == ["primary", "fallback"] and made["endpoint_role"] == "fallback"
+    assert len(made["failed_endpoints"]) == 1 and "503" in made["failed_endpoints"][0]
+    assert "k1" not in json.dumps(made) and "k2" not in json.dumps(made)
+    fresh._generate_once = lambda e, p, s: (_ for _ in ()).throw(RuntimeError("down"))
+    assert fresh.generate_image("p", "1024x1024", TMP / "fb" / "gen_01") is None
+    for k in ("IMAGE_API_KEY", "IMAGE_FALLBACK_API_KEY", "IMAGE_FALLBACK_API_BASE"):
+        os.environ.pop(k, None)
+    importlib.reload(ri)
+
+
 def _stub_forge(captured):
     def call_agent(messages, max_tokens=0):
         captured.append(messages)
